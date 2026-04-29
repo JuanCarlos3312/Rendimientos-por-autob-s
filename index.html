@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Dashboard Rendimiento Diésel</title>
+    <title>Dashboard Rendimiento Diésel | Con Brecha Máx-Mín</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
@@ -95,10 +95,20 @@
             font-size: 0.7rem;
             cursor: pointer;
         }
+        .clear-storage-btn {
+            background: #fee2e2;
+            color: #dc2626;
+            border: none;
+            padding: 0.3rem 1rem;
+            border-radius: 30px;
+            font-size: 0.7rem;
+            cursor: pointer;
+            margin-left: 0.5rem;
+        }
         
         .kpi-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             gap: 0.8rem;
             margin-bottom: 1.2rem;
         }
@@ -108,10 +118,23 @@
             padding: 0.7rem;
             text-align: center;
             border: 1px solid #edf2f7;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 15px -6px rgba(0,0,0,0.1);
         }
         .kpi-title { font-size: 0.6rem; text-transform: uppercase; color: #5b6e8c; letter-spacing: 0.5px; }
         .kpi-value { font-size: 1.5rem; font-weight: 700; color: #0f172a; }
         .kpi-sub { font-size: 0.55rem; margin-top: 2px; color: #3b7c5e; }
+        .kpi-badge { 
+            font-size: 0.65rem; 
+            background: #f1f5f9; 
+            padding: 0.1rem 0.4rem; 
+            border-radius: 20px;
+            display: inline-block;
+            margin-top: 4px;
+        }
         
         .info-bar {
             background: white;
@@ -340,6 +363,7 @@
             <span class="file-label"><i class="fas fa-file-excel"></i> Cargar Excel:</span>
             <input type="file" id="excelInput" accept=".xlsx, .xls">
             <span id="fileStatus" class="file-status loading-status">Sin archivo</span>
+            <button id="clearStorageBtn" class="clear-storage-btn" style="display:none;"><i class="fas fa-trash-alt"></i> Olvidar</button>
         </div>
     </div>
 
@@ -421,7 +445,6 @@
     let filteredData = [];
     let semaforoChart;
 
-    // Guardar datos en localStorage
     const STORAGE_KEY = 'dashboard_diesel_data';
 
     function normalizarSemaforo(valor) {
@@ -488,24 +511,11 @@
         }).filter(item => item.rend > 0);
     }
 
-    function cargarDatosDesdeExcel(dataBuffer) {
-        const workbook = XLSX.read(dataBuffer, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(firstSheet);
-        if(!rows.length) throw new Error("El archivo está vacío");
-        
-        originalData = processExcelData(rows);
-        if(originalData.length === 0) throw new Error("No se encontraron registros válidos");
-        
-        // Guardar en localStorage
+    function guardarEnStorage() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(originalData));
-        
-        initializeFilters();
-        applyFilters();
-        return true;
     }
 
-    function cargarDatosDesdeStorage() {
+    function cargarDesdeStorage() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
             try {
@@ -516,6 +526,7 @@
                     document.getElementById("lastUpdate").innerHTML = `✅ Datos cargados desde memoria local | Total: ${originalData.length} autobuses`;
                     document.getElementById("fileStatus").innerHTML = '<i class="fas fa-database"></i> Cargado desde memoria';
                     document.getElementById("fileStatus").className = "file-status success-status";
+                    document.getElementById("clearStorageBtn").style.display = 'inline-block';
                     return true;
                 }
             } catch(e) { console.warn(e); }
@@ -577,6 +588,15 @@
         return maxRol;
     }
 
+    function calcularBrechaMaxMin(datos) {
+        if (!datos.length) return { difference: 0, percentage: 0, maxRender: null, minRender: null };
+        const maxItem = datos.reduce((max, item) => item.rend > max.rend ? item : max, datos[0]);
+        const minItem = datos.reduce((min, item) => item.rend < min.rend ? item : min, datos[0]);
+        const difference = maxItem.rend - minItem.rend;
+        const percentage = minItem.rend !== 0 ? (difference / minItem.rend) * 100 : 0;
+        return { difference, percentage, maxRender: maxItem, minRender: minItem };
+    }
+
     function applyFilters() {
         let temp = [...originalData];
         const region = document.getElementById("filterRegion").value;
@@ -601,6 +621,7 @@
         const metricas = calcularMetricasPonderadas(filteredData);
         const segmentoSeleccionado = document.getElementById("filterSegmento").value;
         const rolSegmento = obtenerRolPorSegmento(originalData, segmentoSeleccionado);
+        const brecha = calcularBrechaMaxMin(filteredData);
         
         document.getElementById("currentSegmento").innerHTML = segmentoSeleccionado !== "TODOS" ? segmentoSeleccionado : "Todos los segmentos";
         document.getElementById("currentRol").innerHTML = rolSegmento;
@@ -608,30 +629,31 @@
         document.getElementById("currentKm").innerHTML = metricas.totalKm.toLocaleString() + " km";
         document.getElementById("currentLitros").innerHTML = metricas.totalLitros.toLocaleString() + " L";
         
-        renderKPI(metricas);
+        renderKPI(metricas, brecha);
         renderBarsChart();
         renderPieChart();
         renderTable();
     }
 
-    function renderKPI(metricas) {
+    function renderKPI(metricas, brecha) {
         const container = document.getElementById("kpiContainer");
         if(!filteredData.length) { container.innerHTML = `<div class="kpi-card">Sin datos</div>`; return; }
-        const maxR = Math.max(...filteredData.map(d => d.rend));
-        const minR = Math.min(...filteredData.map(d => d.rend));
+        const maxRendInd = Math.max(...filteredData.map(d => d.rend));
+        const minRendInd = Math.min(...filteredData.map(d => d.rend));
         const sobreMeta = filteredData.filter(d => d.rend >= d.meta).length;
         
         container.innerHTML = `
             <div class="kpi-card"><div class="kpi-title">Rend. Ponderado</div><div class="kpi-value">${metricas.rendPonderado || "---"}</div><div class="kpi-sub">km total ÷ litros total</div></div>
-            <div class="kpi-card"><div class="kpi-title">Mejor rend.</div><div class="kpi-value">${maxR}</div><div class="kpi-sub">km/l (individual)</div></div>
-            <div class="kpi-card"><div class="kpi-title">Peor rend.</div><div class="kpi-value">${minR}</div><div class="kpi-sub">km/l (individual)</div></div>
+            <div class="kpi-card"><div class="kpi-title">Mejor rend.</div><div class="kpi-value">${maxRendInd}</div><div class="kpi-sub">${brecha.maxRender ? brecha.maxRender.autobus.split('-')[0] : ''}</div></div>
+            <div class="kpi-card"><div class="kpi-title">Peor rend.</div><div class="kpi-value">${minRendInd}</div><div class="kpi-sub">${brecha.minRender ? brecha.minRender.autobus.split('-')[0] : ''}</div></div>
+            <div class="kpi-card"><div class="kpi-title">Brecha Máx - Mín</div><div class="kpi-value">${brecha.difference.toFixed(2)} km/l</div><div class="kpi-sub">⚡ ${brecha.percentage.toFixed(1)}% de diferencia</div></div>
             <div class="kpi-card"><div class="kpi-title">Sobre meta</div><div class="kpi-value">${sobreMeta}/${filteredData.length}</div><div class="kpi-sub">${Math.round(sobreMeta/filteredData.length*100)}%</div></div>
         `;
     }
 
     function renderBarsChart() {
         const container = document.getElementById("barsList");
-        if(!filteredData.length) { container.innerHTML = '<div style="text-align:center;padding:2rem;">No hay datos</div>'; return; }
+        if(!filteredData.length) { container.innerHTML = '<div style="text-align:center;padding:1rem;">No hay datos</div>'; return; }
         
         const maxRend = Math.max(...filteredData.map(d => d.rend));
         const minRend = Math.min(...filteredData.map(d => d.rend));
@@ -698,8 +720,8 @@
     function renderTable() {
         const tbody = document.getElementById('tableBody');
         tbody.innerHTML = '';
-        if(filteredData.length === 0) { tbody.innerHTML = '<tr><td colspan="10">No hay datos con los filtros seleccionados</td>' + '</tr>'; return; }
-        filteredData.forEach(d => {
+        if(filteredData.length === 0) { tbody.innerHTML = '<tr><td colspan="10">No hay datos con los filtros seleccionados</td></tr>'; return; }
+        filteredData.slice(0, 500).forEach(d => {
             const semClass = d.semaforo.toLowerCase();
             tbody.innerHTML += `
                 <tr>
@@ -713,7 +735,7 @@
                     <td>${d.rol}</td>
                     <td><span class="badge-sem ${semClass}">${d.semaforo}</span></td>
                     <td>${d.responsable}</td>
-                </tr>
+                `,
             `;
         });
     }
@@ -747,6 +769,22 @@
         applyFilters();
     };
     
+    document.getElementById("clearStorageBtn").onclick = () => {
+        if (confirm("¿Borrar el archivo guardado en memoria? La próxima vez tendrás que cargar el Excel manualmente.")) {
+            localStorage.removeItem(STORAGE_KEY);
+            originalData = [];
+            filteredData = [];
+            document.getElementById("fileStatus").innerHTML = 'Sin archivo';
+            document.getElementById("fileStatus").className = "file-status loading-status";
+            document.getElementById("clearStorageBtn").style.display = 'none';
+            document.getElementById("barsList").innerHTML = '<div class="upload-prompt"><i class="fas fa-file-excel"></i><h3>Carga tu archivo Excel para comenzar</h3><p>Haz clic en "Cargar Excel" arriba y selecciona tu archivo.<br>✅ Se guardará automáticamente para la próxima vez.</p></div>';
+            document.getElementById("tableBody").innerHTML = '<tr><td colspan="10">📂 Carga un archivo Excel para ver los datos</td></tr>';
+            document.getElementById("kpiContainer").innerHTML = '';
+            document.getElementById("lastUpdate").innerHTML = 'Memoria borrada. Carga un archivo.';
+            if (semaforoChart) semaforoChart.destroy();
+        }
+    };
+    
     document.getElementById("excelInput").onchange = function(e) {
         const file = e.target.files[0];
         if(!file) return;
@@ -760,10 +798,17 @@
         reader.onload = evt => {
             try {
                 const data = new Uint8Array(evt.target.result);
-                cargarDatosDesdeExcel(data);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(firstSheet);
+                originalData = processExcelData(rows);
+                guardarEnStorage();
+                initializeFilters();
+                applyFilters();
                 updateSpan.innerHTML = `✅ Datos cargados: ${new Date().toLocaleString()} | Total: ${originalData.length} autobuses`;
                 statusSpan.innerHTML = '<i class="fas fa-check-circle"></i> Datos cargados';
                 statusSpan.className = "file-status success-status";
+                document.getElementById("clearStorageBtn").style.display = 'inline-block';
             } catch(err) {
                 alert("Error al procesar el archivo: " + err.message);
                 statusSpan.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error';
@@ -774,7 +819,7 @@
     };
     
     // Intentar cargar datos guardados al iniciar
-    const loaded = cargarDatosDesdeStorage();
+    const loaded = cargarDesdeStorage();
     if (!loaded) {
         document.getElementById("lastUpdate").innerHTML = "📂 Carga un archivo Excel para comenzar";
     }
