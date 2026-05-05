@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Dashboard Rendimiento Diésel | Filtros en Cascada</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #f0f2f5; font-family: 'Inter', sans-serif; padding: 1.5rem; color: #1e293b; }
+        .dashboard-container { max-width: 1600px; margin: 0 auto; }
+        
+        .header { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+        .title-section h1 { font-size: 1.6rem; font-weight: 700; background: linear-gradient(135deg, #1e3c72, #2b4c7c); background-clip: text; -webkit-background-clip: text; color: transparent; }
+        .title-section p { color: #475569; font-size: 0.8rem; margin-top: 0.2rem; }
+        .file-upload-area { background: white; border-radius: 60px; padding: 0.3rem 0.8rem 0.3rem 1rem; display: flex; align-items: center; gap: 0.8rem; border: 1px solid #e2e8f0; }
+        .file-label { font-weight: 500; font-size: 0.8rem; color: #1e4a76; }
+        .file-status { font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 20px; }
+        .loading-status { background: #fef3c7; color: #92400e; }
+        .success-status { background: #d1fae5; color: #065f46; }
+        .error-status { background: #fee2e2; color: #991b1b; }
+        
+        .filters-section { background: white; border-radius: 20px; padding: 0.8rem 1rem; margin-bottom: 1.2rem; border: 1px solid #eef2f6; }
+        .filters-row { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 0.6rem; align-items: center; }
+        .filter-group { display: flex; align-items: center; gap: 5px; background: #f8fafc; padding: 0.2rem 0.7rem; border-radius: 30px; border: 1px solid #e2edf7; }
+        .filter-group label { font-weight: 600; font-size: 0.6rem; color: #2c5a7a; }
+        select, .filter-group input { background: transparent; border: none; padding: 0.3rem 0; font-size: 0.7rem; font-weight: 500; outline: none; font-family: 'Inter', monospace; }
+        .reset-btn { background: #eef2ff; border: none; padding: 0.3rem 1rem; border-radius: 30px; font-size: 0.7rem; cursor: pointer; }
+        .clear-storage-btn { background: #fee2e2; color: #dc2626; border: none; padding: 0.3rem 1rem; border-radius: 30px; cursor: pointer; margin-left: 0.5rem; }
+        
+        .kpi-grid { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-bottom: 1.2rem; }
+        .kpi-card { background: white; border-radius: 18px; padding: 0.7rem; text-align: center; border: 1px solid #edf2f7; flex: 1; min-width: 150px; transition: transform 0.2s; }
+        .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 15px -6px rgba(0,0,0,0.1); }
+        .kpi-title { font-size: 0.6rem; text-transform: uppercase; color: #5b6e8c; letter-spacing: 0.5px; }
+        .kpi-value { font-size: 1.5rem; font-weight: 700; color: #0f172a; }
+        .kpi-sub { font-size: 0.55rem; margin-top: 2px; color: #3b7c5e; }
+        .brecha-verde { background-color: #dcfce7; color: #15803d; border-left: 3px solid #22c55e; }
+        .brecha-roja { background-color: #fee2e2; color: #b91c1c; border-left: 3px solid #ef4444; }
+        
+        .info-bar { background: white; border-radius: 16px; padding: 0.6rem 1rem; margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 1rem; border: 1px solid #eef2f6; font-size: 0.7rem; }
+        .info-item { display: flex; align-items: center; gap: 6px; background: #f8fafc; padding: 0.2rem 0.6rem; border-radius: 30px; }
+        .info-label { font-weight: 600; color: #475569; }
+        .info-value { font-weight: 700; color: #1e293b; }
+        
+        .row-charts { display: flex; gap: 1rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+        .chart-ranking { flex: 2; min-width: 280px; }
+        .chart-pie { flex: 1.2; min-width: 300px; }
+        .card { background: white; border-radius: 18px; padding: 0.8rem; border: 1px solid #eef2f6; height: 100%; }
+        .card-title { font-weight: 600; font-size: 0.8rem; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 6px; border-left: 3px solid #2b6e9e; padding-left: 8px; }
+        
+        .bars-container { max-height: 460px; overflow-y: auto; overflow-x: hidden; border-radius: 10px; }
+        .bar-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; padding: 3px 5px; border-radius: 6px; }
+        .bar-item:hover { background: #f8fafc; }
+        .bar-bus { min-width: 180px; max-width: 180px; font-weight: 500; font-size: 0.68rem; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .bar-value { min-width: 42px; font-weight: 700; font-size: 0.75rem; text-align: right; }
+        .bar-bg { flex: 1; background: #e2e8f0; border-radius: 16px; height: 28px; overflow: hidden; position: relative; }
+        .bar-fill { height: 100%; border-radius: 16px; transition: width 0.2s ease; }
+        .bar-fill.verde { background: #10b981; }
+        .bar-fill.amarillo { background: #facc15; }
+        .bar-fill.naranja { background: #ea580c; }
+        .bar-fill.rojo { background: #dc2626; }
+        .meta-line { position: absolute; top: 0; bottom: 0; width: 2px; background-color: #1e293b; border-left: 2px dashed #1e293b; z-index: 10; }
+        .meta-line::after { content: "🎯"; position: absolute; top: -14px; left: -7px; font-size: 8px; background: white; padding: 0 2px; border-radius: 8px; }
+        
+        .chart-note { font-size: 0.55rem; color: #6c7a91; margin-top: 0.4rem; text-align: center; }
+        .bus-count { background: #e2e8f0; border-radius: 16px; padding: 0.1rem 0.4rem; font-size: 0.6rem; margin-left: 6px; }
+        
+        .pie-wrapper { display: flex; justify-content: center; align-items: center; min-height: 360px; padding: 0.5rem; }
+        canvas#semaforoChart { max-width: 320px !important; max-height: 320px !important; width: 100% !important; height: auto !important; }
+        
+        .table-wrapper { overflow-x: auto; margin-top: 0.5rem; border-radius: 16px; }
+        .data-table { width: 100%; border-collapse: collapse; font-size: 0.7rem; background: white; }
+        .data-table th { text-align: left; padding: 0.75rem 0.75rem; background: #f1f5f9; font-weight: 700; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+        .data-table th:hover { background: #e2e8f0; }
+        .data-table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid #f1f5f9; white-space: nowrap; vertical-align: middle; }
+        .data-table tr:hover td { background: #f8fafc; }
+        
+        .badge-sem { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.65rem; font-weight: 600; min-width: 70px; text-align: center; }
+        .badge-sem.verde { background: #dcfce7; color: #15803d; }
+        .badge-sem.amarillo { background: #fef9c3; color: #854d0e; }
+        .badge-sem.naranja { background: #ffedd5; color: #9a3412; }
+        .badge-sem.rojo { background: #fee2e2; color: #b91c1c; }
+        
+        footer { margin-top: 1rem; text-align: center; font-size: 0.55rem; color: #6c7a91; border-top: 1px solid #e2edf7; padding-top: 0.8rem; }
+        @media (max-width: 800px) { 
+            .row-charts { flex-direction: column; }
+            .kpi-card { min-width: 120px; }
+            body { padding: 1rem; }
+            .bar-bus { min-width: 120px; max-width: 120px; font-size: 0.6rem; }
+        }
+        
+        .upload-prompt { text-align: center; padding: 2rem; background: white; border-radius: 20px; border: 2px dashed #cbd5e1; }
+        .upload-prompt i { font-size: 3rem; color: #94a3b8; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+<div class="dashboard-container">
+    <div class="header">
+        <div class="title-section">
+            <h1><i class="fas fa-charging-station"></i> Rendimiento de Diésel</h1>
+            <p>Monitoreo ejecutivo · Cálculo ponderado (km total ÷ litros total)</p>
+        </div>
+        <div class="file-upload-area">
+            <span class="file-label"><i class="fas fa-file-excel"></i> Cargar Excel:</span>
+            <input type="file" id="excelInput" accept=".xlsx, .xls">
+            <span id="fileStatus" class="file-status loading-status">Sin archivo</span>
+            <button id="clearStorageBtn" class="clear-storage-btn" style="display:none;"><i class="fas fa-trash-alt"></i> Olvidar</button>
+        </div>
+    </div>
+
+    <div class="filters-section">
+        <div class="filters-row">
+            <div class="filter-group"><label>🌍 ZONA:</label><select id="filterZona"><option value="TODAS">TODAS</option></select></div>
+            <div class="filter-group"><label>🏭 BASE:</label><select id="filterBase"><option value="TODAS">TODAS</option></select></div>
+            <div class="filter-group"><label>🚏 SERVICIO:</label><select id="filterServicio"><option value="TODOS">TODOS</option></select></div>
+            <div class="filter-group"><label>📌 SEGMENTO:</label><select id="filterSegmento"><option value="TODOS">TODOS</option></select></div>
+            <button class="reset-btn" id="resetFilters"><i class="fas fa-undo-alt"></i> Reiniciar</button>
+        </div>
+        <div class="filters-row">
+            <div class="filter-group"><label>🚦 SEMÁFORO:</label><select id="filterSemaforo"><option value="TODOS">TODOS</option></select></div>
+            <div class="filter-group"><label>📊 Min (km/l):</label><input type="number" id="filterRendMin" step="0.1" placeholder="Min" style="width:60px;"></div>
+            <div class="filter-group"><label>📊 Max (km/l):</label><input type="number" id="filterRendMax" step="0.1" placeholder="Max" style="width:60px;"></div>
+        </div>
+    </div>
+
+    <div class="info-bar" id="infoBar">
+        <div class="info-item"><span class="info-label">📌 SEGMENTO:</span><span class="info-value" id="currentSegmento">No seleccionado</span></div>
+        <div class="info-item"><span class="info-label">👥 ROL:</span><span class="info-value" id="currentRol">---</span></div>
+        <div class="info-item"><span class="info-label">📊 Rend. Ponderado:</span><span class="info-value" id="currentRendimientoPonderado">---</span></div>
+        <div class="info-item"><span class="info-label">📏 Kilómetros:</span><span class="info-value" id="currentKm">---</span></div>
+        <div class="info-item"><span class="info-label">⛽ Litros:</span><span class="info-value" id="currentLitros">---</span></div>
+    </div>
+
+    <div class="kpi-grid" id="kpiContainer"></div>
+
+    <div class="row-charts">
+        <div class="chart-ranking">
+            <div class="card">
+                <div class="card-title">
+                    <i class="fas fa-tachometer-alt"></i> Ranking por Rendimiento (km/l)
+                    <span class="bus-count" id="busCountChart">0</span>
+                </div>
+                <div class="bars-container" id="barsContainer">
+                    <div id="barsList"><div class="upload-prompt"><i class="fas fa-file-excel"></i><h3>Carga tu archivo Excel</h3></div></div>
+                </div>
+                <div class="chart-note">🟢 Verde (≥ meta) · 🟡 Amarillo · 🟠 Naranja · 🔴 Rojo | Línea 🎯 = meta del segmento</div>
+            </div>
+        </div>
+        <div class="chart-pie">
+            <div class="card">
+                <div class="card-title"><i class="fas fa-chart-pie"></i> Estado por Semáforo</div>
+                <div class="pie-wrapper"><canvas id="semaforoChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title"><i class="fas fa-table-list"></i> Detalle de Autobuses</div>
+        <div class="table-wrapper">
+            <table class="data-table" id="dataTable">
+                <thead>
+                    <tr><th onclick="sortTable('autobus')">🚌 Autobús</th><th onclick="sortTable('rend')">📊 Rendimiento</th><th>🎯 Meta</th><th onclick="sortTable('zona')">🌍 Zona</th><th onclick="sortTable('base')">🏭 Base</th><th>🚏 Servicio</th><th>📌 Segmento</th><th>👥 Rol</th><th>🚦 Semáforo</th><th>👤 Responsable</th></tr>
+                </thead>
+                <tbody id="tableBody"><tr><td colspan="10" style="text-align:center; padding:2rem;">📂 Carga un archivo Excel</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+    <footer><span id="lastUpdate">Esperando carga...</span></footer>
+</div>
+
+<script>
+    let originalData = [], filteredData = [];
+    let semaforoChart;
+    const STORAGE_KEY = 'dashboard_filtros_v6';
+
+    function normalizarSemaforo(v) { let val = v?.toString().toUpperCase().trim(); if (val === "VERDE") return "VERDE"; if (val === "AMARILLO") return "AMARILLO"; if (val === "NARANJA") return "NARANJA"; if (val === "ROJO") return "ROJO"; return "SIN DATO"; }
+    function truncarTexto(t, l) { return t?.length > l ? t.substring(0, l-3)+"..." : t || ""; }
+
+    function processExcelData(rows) {
+        return rows.map(row => ({
+            autobus: row["Autobus"]?.toString() || "N/D",
+            rend: parseFloat(row["Rend."]) || 0,
+            meta: parseFloat(row["Meta."]) || 0,
+            zona: row["Zona"]?.toString().trim() || "S/D",
+            base: row["Base"]?.toString().trim() || "S/D",
+            servicio: row["Servicio"]?.toString().trim() || "S/D",
+            segmento: row["SEGMENTO"]?.toString() || "---",
+            rol: row["Rol"]?.toString().trim() || "---",
+            responsable: row["RESPONSABLE"]?.toString() || "No asignado",
+            semaforo: normalizarSemaforo(row["SEMAFORO"]),
+            litros: parseFloat(row["Litros"]) || 0,
+            kms: parseFloat(row["Kms. Rec."]) || 0
+        })).filter(item => item.rend > 0);
+    }
+
+    function getDistinctValues(arr, field, filters = {}) {
+        let temp = [...arr];
+        if (filters.zona && filters.zona !== "TODAS") temp = temp.filter(d => d.zona === filters.zona);
+        if (filters.base && filters.base !== "TODAS") temp = temp.filter(d => d.base === filters.base);
+        if (filters.servicio && filters.servicio !== "TODOS") temp = temp.filter(d => d.servicio === filters.servicio);
+        let values = [...new Set(temp.map(d => d[field]))].filter(v => v && v !== "S/D" && v !== "---");
+        return values.sort();
+    }
+
+    function updateCascadeFilters() {
+        const zonaVal = document.getElementById("filterZona").value;
+        const currentBase = document.getElementById("filterBase").value;
+        const currentServicio = document.getElementById("filterServicio").value;
+        
+        // 1. Actualizar BASE
+        let bases = getDistinctValues(originalData, 'base', { zona: zonaVal });
+        let baseSelect = document.getElementById("filterBase");
+        let oldBase = baseSelect.value;
+        baseSelect.innerHTML = '<option value="TODAS">TODAS</option>' + bases.map(v => `<option value="${v}">${v}</option>`).join('');
+        // Si la base seleccionada anteriormente ya no es válida, resetear a TODAS
+        if (oldBase !== "TODAS" && !bases.includes(oldBase)) {
+            baseSelect.value = "TODAS";
+        } else {
+            baseSelect.value = oldBase;
+        }
+
+        // 2. Actualizar SERVICIO basado en ZONA y BASE actual
+        let servicios = getDistinctValues(originalData, 'servicio', { zona: zonaVal, base: baseSelect.value });
+        let servicioSelect = document.getElementById("filterServicio");
+        let oldServicio = servicioSelect.value;
+        servicioSelect.innerHTML = '<option value="TODOS">TODOS</option>' + servicios.map(v => `<option value="${v}">${v}</option>`).join('');
+        if (oldServicio !== "TODOS" && !servicios.includes(oldServicio)) {
+            servicioSelect.value = "TODOS";
+        } else {
+            servicioSelect.value = oldServicio;
+        }
+
+        // 3. Actualizar SEGMENTO basado en ZONA, BASE y SERVICIO actual
+        let segmentos = getDistinctValues(originalData, 'segmento', { zona: zonaVal, base: baseSelect.value, servicio: servicioSelect.value });
+        let segmentoSelect = document.getElementById("filterSegmento");
+        segmentoSelect.innerHTML = '<option value="TODOS">TODOS</option>' + segmentos.map(v => `<option value="${v}">${v}</option>`).join('');
+        // El segmento se resetea a TODOS para evitar inconsistencias
+        segmentoSelect.value = "TODOS";
+    }
+
+    function applyFilters() {
+        if (!originalData.length) return;
+        
+        let temp = [...originalData];
+        const zona = document.getElementById("filterZona").value;
+        const base = document.getElementById("filterBase").value;
+        const servicio = document.getElementById("filterServicio").value;
+        const segmento = document.getElementById("filterSegmento").value;
+        const semaforo = document.getElementById("filterSemaforo").value;
+        let min = parseFloat(document.getElementById("filterRendMin").value);
+        let max = parseFloat(document.getElementById("filterRendMax").value);
+        
+        if (zona !== "TODAS") temp = temp.filter(d => d.zona === zona);
+        if (base !== "TODAS") temp = temp.filter(d => d.base === base);
+        if (servicio !== "TODOS") temp = temp.filter(d => d.servicio === servicio);
+        if (segmento !== "TODOS") temp = temp.filter(d => d.segmento === segmento);
+        if (semaforo !== "TODOS") temp = temp.filter(d => d.semaforo === semaforo);
+        if (!isNaN(min)) temp = temp.filter(d => d.rend >= min);
+        if (!isNaN(max)) temp = temp.filter(d => d.rend <= max);
+        
+        filteredData = temp.sort((a,b) => b.rend - a.rend);
+        document.getElementById("busCountChart").innerHTML = filteredData.length;
+        
+        // Cálculo de KPIs
+        let totalKm = filteredData.reduce((s,d) => s + (d.kms||0), 0);
+        let totalLitros = filteredData.reduce((s,d) => s + (d.litros||0), 0);
+        let rendPond = totalLitros > 0 ? (totalKm/totalLitros).toFixed(2) : 0;
+        let maxR = filteredData.length ? Math.max(...filteredData.map(d=>d.rend)) : 0;
+        let minR = filteredData.length ? Math.min(...filteredData.map(d=>d.rend)) : 0;
+        let sobreMeta = filteredData.filter(d => d.rend >= d.meta).length;
+        let brecha = maxR - minR;
+        let brechaPct = minR !== 0 ? (brecha/minR)*100 : 0;
+        let isHighGap = brecha >= 0.50;
+        
+        // Actualizar info bar
+        document.getElementById("currentSegmento").innerHTML = segmento !== "TODOS" ? segmento : "Todos los segmentos";
+        let rolesUnicos = [...new Set(filteredData.map(d=>d.rol))].filter(r=>r!=="---");
+        document.getElementById("currentRol").innerHTML = rolesUnicos.slice(0, 2).join(", ") + (rolesUnicos.length > 2 ? "..." : "") || "---";
+        document.getElementById("currentRendimientoPonderado").innerHTML = rendPond !== "0.00" ? `${rendPond} km/l` : "---";
+        document.getElementById("currentKm").innerHTML = totalKm.toLocaleString() + " km";
+        document.getElementById("currentLitros").innerHTML = totalLitros.toLocaleString() + " L";
+        
+        // KPIs HTML
+        document.getElementById("kpiContainer").innerHTML = `
+            <div class="kpi-card"><div class="kpi-title">Rend. Ponderado</div><div class="kpi-value">${rendPond || "---"}</div><div class="kpi-sub">km total ÷ litros total</div></div>
+            <div class="kpi-card"><div class="kpi-title">Mejor rend.</div><div class="kpi-value">${maxR}</div></div>
+            <div class="kpi-card"><div class="kpi-title">Peor rend.</div><div class="kpi-value">${minR}</div></div>
+            <div class="kpi-card ${isHighGap ? 'brecha-roja' : 'brecha-verde'}"><div class="kpi-title">${isHighGap ? '⚠️' : '✅'} Brecha</div><div class="kpi-value">${brecha.toFixed(2)} km/l</div><div class="kpi-sub">${brechaPct.toFixed(1)}% diferencia</div></div>
+            <div class="kpi-card"><div class="kpi-title">Sobre meta</div><div class="kpi-value">${sobreMeta}/${filteredData.length}</div><div class="kpi-sub">${Math.round(sobreMeta/filteredData.length*100)}%</div></div>
+        `;
+        
+        // Gráfica de barras
+        if (filteredData.length) {
+            let maxVal = Math.max(...filteredData.map(d=>d.rend));
+            let minVal = Math.min(...filteredData.map(d=>d.rend));
+            let rango = maxVal - minVal;
+            document.getElementById("barsList").innerHTML = filteredData.map(b => {
+                let ancho = rango === 0 ? 50 : ((b.rend - minVal) / rango) * 76 + 20;
+                let metaPos = rango === 0 ? 50 : ((b.meta - minVal) / rango) * 76 + 20;
+                return `<div class="bar-item"><div class="bar-bus" title="${b.autobus}">${truncarTexto(b.autobus,38)}</div><div class="bar-value">${b.rend.toFixed(2)}</div><div class="bar-bg"><div class="bar-fill ${b.semaforo.toLowerCase()}" style="width: ${Math.min(96,Math.max(20,ancho))}%;"></div><div class="meta-line" style="left: ${Math.min(96,Math.max(0,metaPos))}%;"></div></div></div>`;
+            }).join('');
+        } else {
+            document.getElementById("barsList").innerHTML = '<div class="upload-prompt"><i class="fas fa-chart-line"></i><h3>No hay datos con estos filtros</h3></div>';
+        }
+        
+        // Gráfica circular
+        if (semaforoChart) semaforoChart.destroy();
+        let groups = { VERDE:0, AMARILLO:0, NARANJA:0, ROJO:0 };
+        filteredData.forEach(d => { let s = d.semaforo.toUpperCase(); if (groups[s]!==undefined) groups[s]++; });
+        let pieLabels = Object.keys(groups).filter(k => groups[k]>0);
+        let pieValues = pieLabels.map(k => groups[k]);
+        let pieColors = { VERDE:"#10b981", AMARILLO:"#facc15", NARANJA:"#ea580c", ROJO:"#dc2626" };
+        if (pieLabels.length) {
+            semaforoChart = new Chart(document.getElementById('semaforoChart'), { type:'pie', data:{ labels:pieLabels, datasets:[{ data:pieValues, backgroundColor:pieLabels.map(l=>pieColors[l]), borderWidth:0 }] }, options:{ responsive:true, maintainAspectRatio:true, plugins:{ legend:{ position:'bottom', labels:{ font:{ size:10 } } }, tooltip:{ callbacks:{ label:(ctx)=>`${ctx.label}: ${ctx.raw} (${Math.round(ctx.raw/filteredData.length*100)}%)` } } } } });
+        } else {
+            document.getElementById('semaforoChart').getContext('2d').clearRect(0,0,300,300);
+        }
+        
+        // Tabla
+        document.getElementById("tableBody").innerHTML = filteredData.slice(0,500).map(d => `<tr><td><strong title="${d.autobus}">${truncarTexto(d.autobus,55)}</strong></td><td>${d.rend.toFixed(2)} km/l</td><td>${d.meta.toFixed(2)}</td><td>${d.zona}</td><td>${d.base}</td><td>${d.servicio}</td><td>${d.segmento}</td><td>${d.rol}</td><td><span class="badge-sem ${d.semaforo.toLowerCase()}">${d.semaforo}</span></td><td>${d.responsable}</td></tr>`).join('');
+    }
+
+    function initializeFilters() {
+        let zonas = getDistinctValues(originalData, 'zona');
+        document.getElementById("filterZona").innerHTML = '<option value="TODAS">TODAS</option>' + zonas.map(v => `<option value="${v}">${v}</option>`).join('');
+        updateCascadeFilters();
+        applyFilters();
+    }
+
+    function guardarEnStorage() { localStorage.setItem(STORAGE_KEY, JSON.stringify(originalData)); }
+    function cargarDesdeStorage() {
+        let saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            try { originalData = JSON.parse(saved); if (originalData.length) { initializeFilters(); document.getElementById("fileStatus").innerHTML = '<i class="fas fa-database"></i> Memoria'; document.getElementById("fileStatus").className = "file-status success-status"; document.getElementById("clearStorageBtn").style.display = 'inline-block'; return true; } } catch(e) {}
+        }
+        return false;
+    }
+
+    // EVENTOS: Al cambiar un filtro, actualizamos la cascada y luego los datos
+    function handleFilterChange() {
+        updateCascadeFilters();
+        applyFilters();
+    }
+
+    document.getElementById("filterZona").addEventListener("change", handleFilterChange);
+    document.getElementById("filterBase").addEventListener("change", handleFilterChange);
+    document.getElementById("filterServicio").addEventListener("change", handleFilterChange);
+    document.getElementById("filterSegmento").addEventListener("change", applyFilters);
+    document.getElementById("filterSemaforo").addEventListener("change", applyFilters);
+    document.getElementById("filterRendMin").addEventListener("input", applyFilters);
+    document.getElementById("filterRendMax").addEventListener("input", applyFilters);
+    document.getElementById("resetFilters").onclick = () => {
+        document.getElementById("filterZona").value = "TODAS";
+        document.getElementById("filterSemaforo").value = "TODOS";
+        document.getElementById("filterRendMin").value = "";
+        document.getElementById("filterRendMax").value = "";
+        handleFilterChange(); // Esto resetea base, servicio, segmento y aplica
+    };
+    document.getElementById("clearStorageBtn").onclick = () => { if (confirm("¿Borrar datos guardados?")) { localStorage.removeItem(STORAGE_KEY); location.reload(); } };
+    
+    document.getElementById("excelInput").onchange = function(e) {
+        let file = e.target.files[0];
+        if (!file) return;
+        let reader = new FileReader();
+        reader.onload = evt => {
+            try {
+                let data = new Uint8Array(evt.target.result);
+                let workbook = XLSX.read(data, { type: 'array' });
+                let rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                originalData = processExcelData(rows);
+                guardarEnStorage();
+                initializeFilters();
+                document.getElementById("fileStatus").innerHTML = '<i class="fas fa-check-circle"></i> Cargado';
+                document.getElementById("fileStatus").className = "file-status success-status";
+                document.getElementById("clearStorageBtn").style.display = 'inline-block';
+                document.getElementById("lastUpdate").innerHTML = `✅ ${new Date().toLocaleString()} | ${originalData.length} buses`;
+            } catch(err) { alert("Error: " + err.message); }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+    
+    window.sortTable = (col) => {
+        if (!filteredData.length) return;
+        if (col === 'autobus') filteredData.sort((a,b)=> a.autobus.localeCompare(b.autobus));
+        else if (col === 'rend') filteredData.sort((a,b)=> b.rend - a.rend);
+        else if (col === 'zona') filteredData.sort((a,b)=> a.zona.localeCompare(b.zona));
+        else if (col === 'base') filteredData.sort((a,b)=> a.base.localeCompare(b.base));
+        document.getElementById("tableBody").innerHTML = filteredData.slice(0,500).map(d => `<tr><td><strong title="${d.autobus}">${truncarTexto(d.autobus,55)}</strong></td><td>${d.rend.toFixed(2)} km/l</td><td>${d.meta.toFixed(2)}</td><td>${d.zona}</td><td>${d.base}</td><td>${d.servicio}</td><td>${d.segmento}</td><td>${d.rol}</td><td><span class="badge-sem ${d.semaforo.toLowerCase()}">${d.semaforo}</span></td><td>${d.responsable}</td></tr>`).join('');
+    };
+    
+    if (!cargarDesdeStorage()) document.getElementById("lastUpdate").innerHTML = "📂 Carga un archivo Excel";
+</script>
+</body>
+</html>
